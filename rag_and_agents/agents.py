@@ -6,12 +6,24 @@ happens in app.py, which calls these in sequence and passes each agent's
 output into the next.
 """
 import os
+from dotenv import load_dotenv
 from openai import OpenAI
 
-from . import rag
+try:
+    from . import rag
+except ImportError:
+    import rag
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-MODEL = "gpt-4o-mini"  # fast + cheap, swap for "gpt-4o" if you want higher quality
+load_dotenv()
+
+# Point the OpenAI client to Groq's free endpoint
+client = OpenAI(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.environ.get("GROQ_API_KEY")
+)
+
+# Using the active model identified from the Groq playground
+MODEL = "openai/gpt-oss-120b"
 
 
 def _call_llm(system_prompt, user_content):
@@ -37,7 +49,7 @@ def nutrition_knowledge_agent(food_names):
         "You are the Nutrition Knowledge Agent. You are given raw nutrition data "
         "(calories, macros) for some foods. Summarize it clearly and briefly, "
         "in plain language a non-expert can follow. Do not invent numbers that "
-        "aren't in the data."
+        "aren't in the data. Output in plain text only, no markdown."
     )
     user_content = f"Raw nutrition data:\n{facts}"
     summary = _call_llm(system_prompt, user_content)
@@ -52,7 +64,10 @@ def diet_recommendation_agent(profile, nutrition_context):
         "(age, health conditions, allergies, cultural preferences, fitness goals) "
         "and the nutrition data provided, propose a one-day meal plan "
         "(breakfast, lunch, dinner, one snack). Respect allergies strictly. "
-        "Keep it practical and culturally appropriate. Be concise."
+        "Keep it practical and culturally appropriate. Be concise. "
+        "CRITICAL INSTRUCTION: Output your response in plain text only. "
+        "Do NOT use Markdown formatting, asterisks (**), hash symbols (###), or text-based tables. "
+        "Use standard spacing and numbered lists if you need to organize information."
     )
     user_content = f"User profile: {profile}\n\nAvailable nutrition data: {nutrition_context}"
     return _call_llm(system_prompt, user_content)
@@ -66,7 +81,9 @@ def health_advisory_agent(profile, diet_plan):
         "against the user's stated health conditions (e.g. diabetes, "
         "hypertension, heart disease) and flag anything risky, and suggest "
         "specific swaps if needed. If no conditions were stated, just give one "
-        "general preventive-health tip. Be concise and non-alarmist."
+        "general preventive-health tip. Be concise and non-alarmist. "
+        "CRITICAL INSTRUCTION: Output your response in plain text only. "
+        "Do NOT use Markdown formatting, asterisks (**), hash symbols (###), or text-based tables."
     )
     user_content = f"User profile: {profile}\n\nProposed plan: {diet_plan}"
     return _call_llm(system_prompt, user_content)
@@ -75,7 +92,6 @@ def health_advisory_agent(profile, diet_plan):
 # ---- Agent 4: Food Log & Feedback Agent ------------------------------------
 def food_log_agent(profile, logged_meal_text):
     """Analyzes a meal the user logged (as free text) and gives instant feedback."""
-    # crude but effective for a demo: ask GPT to pull out food item names first
     extraction_prompt = (
         "Extract just the distinct food item names mentioned in this meal "
         "description, as a comma-separated list, nothing else."
@@ -89,7 +105,8 @@ def food_log_agent(profile, logged_meal_text):
         "You are the Food Log & Feedback Agent. The user just logged a meal. "
         "Using the retrieved nutrition data, estimate total calories and macros "
         "for the meal, compare it briefly to what a balanced meal should look "
-        "like for this user's profile, and give one actionable piece of feedback."
+        "like for this user's profile, and give one actionable piece of feedback. "
+        "Output in plain text only, no markdown formatting or asterisks."
     )
     user_content = (
         f"User profile: {profile}\n"
