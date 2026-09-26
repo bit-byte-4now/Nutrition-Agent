@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nutrition Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="topbar-mark">🌾</span>
+  <h1>Nutrition Agent</h1>
+  <span class="topbar-sub">personalized diet insight, powered by four agents</span>
+</header>
+
+<main class="layout">
+
+  <section class="panel profile-panel">
+    <h2>Your profile</h2>
+    <form id="profile-form">
+      <label>Age
+        <input type="number" name="age" min="1" max="120" required>
+      </label>
+      <label>Health conditions
+        <input type="text" name="conditions" placeholder="e.g. type 2 diabetes, none">
+      </label>
+      <label>Allergies
+        <input type="text" name="allergies" placeholder="e.g. peanuts, none">
+      </label>
+      <label>Cultural / cuisine preference
+        <input type="text" name="cuisine" placeholder="e.g. North Indian vegetarian">
+      </label>
+      <label>Fitness goal
+        <select name="goal">
+          <option value="maintain weight">Maintain weight</option>
+          <option value="lose weight">Lose weight</option>
+          <option value="gain muscle">Gain muscle</option>
+          <option value="general health">General health</option>
+        </select>
+      </label>
+      <button type="submit">Generate my plan</button>
+    </form>
+    <p class="hint" id="profile-status"></p>
+  </section>
+
+  <section class="panel plan-panel">
+    <h2>Today's plan</h2>
+    <div id="plan-output" class="card-output empty">Fill in your profile and generate a plan to see it here.</div>
+    <h3>Health advisory</h3>
+    <div id="advisory-output" class="card-output empty">—</div>
+  </section>
+
+  <section class="panel log-panel">
+    <h2>Log a meal</h2>
+    <form id="log-form">
+      <input type="text" name="meal_text" placeholder="e.g. 2 rotis, dal, and a bowl of rice" required>
+      <button type="submit">Log &amp; analyze</button>
+    </form>
+    <div id="log-feedback"></div>
+  </section>
+
+  <section class="panel dashboard-panel">
+    <h2>Today's intake</h2>
+    <canvas id="dashboard-chart" height="180"></canvas>
+  </section>
+
+</main>
+
+<script>
+const profileForm = document.getElementById('profile-form');
+const profileStatus = document.getElementById('profile-status');
+const planOutput = document.getElementById('plan-output');
+const advisoryOutput = document.getElementById('advisory-output');
+const logForm = document.getElementById('log-form');
+const logFeedback = document.getElementById('log-feedback');
+
+let chart;
+
+function renderChart(totals) {
+  const ctx = document.getElementById('dashboard-chart');
+  const data = {
+    labels: ['Calories', 'Protein (g)', 'Carbs (g)', 'Fat (g)'],
+    datasets: [{
+      label: 'Logged today',
+      data: [totals.calories, totals.protein_g, totals.carbs_g, totals.fat_g],
+      backgroundColor: ['#3C6E47', '#8FB996', '#D9A441', '#C9714E']
+    }]
+  };
+  if (chart) { chart.data = data; chart.update(); }
+  else {
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: data,
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+  }
+}
+
+async function refreshDashboard() {
+  const res = await fetch('/api/dashboard');
+  const totals = await res.json();
+  renderChart(totals);
+}
+
+profileForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  profileStatus.textContent = 'Agents are working on your plan...';
+  const formData = new FormData(profileForm);
+  const profile = {
+    age: formData.get('age'),
+    conditions: formData.get('conditions'),
+    allergies: formData.get('allergies'),
+    cultural_preference: formData.get('cuisine'),
+    goal: formData.get('goal')
+  };
+
+  const res = await fetch('/api/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile)
+  });
+  const data = await res.json();
+
+  planOutput.textContent = data.plan;
+  planOutput.classList.remove('empty');
+  advisoryOutput.textContent = data.advisory;
+  advisoryOutput.classList.remove('empty');
+  profileStatus.textContent = 'Plan ready.';
+});
+
+logForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(logForm);
+  const meal_text = formData.get('meal_text');
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry pending';
+  entry.textContent = 'Analyzing "' + meal_text + '"...';
+  logFeedback.prepend(entry);
+
+  const res = await fetch('/api/log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meal_text })
+  });
+  const data = await res.json();
+
+  entry.classList.remove('pending');
+  entry.textContent = data.feedback || data.error;
+
+  logForm.reset();
+  refreshDashboard();
+});
+
+refreshDashboard();
+</script>
+
+</body>
+</html>
